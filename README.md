@@ -1,4 +1,4 @@
-# AI-DAT
+# AI-DAT (Digital Audio Tool)
 
 AI-DAT is is an ambitious and impressive AI-Powered Digital Audio Workstation (DAW) that runs entirely in the browser. It's designed to make podcasting and audio creation incredibly easy by combining a simple, intuitive multi-track timeline with powerful, AI-driven content generation and a professional-grade mixing console.
 
