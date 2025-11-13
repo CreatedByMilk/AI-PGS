@@ -27,9 +27,7 @@ export default defineConfig(({ mode }) => {
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         // Magenta.js needs these globals
         global: 'globalThis',
-        'process.env': {},
-        'process.hrtime': '(() => { const start = performance.now(); return () => [0, Math.floor((performance.now() - start) * 1e6)]; })()',
-        Buffer: '(function(){ const w=typeof window!=="undefined"?window:{}; return w.Buffer||{isBuffer:function(){return false}}; })()'
+        'process.env': '{}',
       },
       resolve: {
         alias: {

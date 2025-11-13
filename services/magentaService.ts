@@ -111,15 +111,65 @@ export const noteSequenceToAudioBuffer = async (
       sampleRate
     );
 
-    // Create a destination node
+    // Connect player output to destination
     const gainNode = offlineContext.createGain();
+    gainNode.gain.value = 0.8; // Prevent clipping
     gainNode.connect(offlineContext.destination);
 
-    // Start playback into offline context
-    await player.start(sequence, undefined, offlineContext as any);
+    // Start playback - using a promise to ensure it completes
+    const playPromise = new Promise<void>((resolve) => {
+      player.start(sequence, {
+        run: (note: any) => {
+          // Note callback - create and schedule audio for each note
+          const now = offlineContext.currentTime;
+          const startTime = note.startTime || 0;
+          const endTime = note.endTime || (startTime + 0.5);
+          const noteDuration = endTime - startTime;
+
+          // Create oscillator for this note
+          const osc = offlineContext.createOscillator();
+          const noteGain = offlineContext.createGain();
+
+          // Use a more musical oscillator type
+          osc.type = 'triangle';
+          osc.frequency.value = note.pitch ? 440 * Math.pow(2, (note.pitch - 69) / 12) : 440;
+
+          // ADSR envelope for musicality
+          noteGain.gain.setValueAtTime(0, now + startTime);
+          noteGain.gain.linearRampToValueAtTime(0.3, now + startTime + 0.01); // Attack
+          noteGain.gain.exponentialRampToValueAtTime(0.2, now + startTime + 0.1); // Decay
+          noteGain.gain.setValueAtTime(0.2, now + endTime - 0.05); // Sustain
+          noteGain.gain.exponentialRampToValueAtTime(0.01, now + endTime); // Release
+
+          osc.connect(noteGain);
+          noteGain.connect(gainNode);
+
+          osc.start(now + startTime);
+          osc.stop(now + endTime);
+        },
+        stop: () => {
+          resolve();
+        }
+      });
+    });
+
+    // Wait for all notes to be scheduled
+    await playPromise;
+
+    // Add a small delay to ensure all notes are scheduled
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Render the audio
     const renderedBuffer = await offlineContext.startRendering();
+
+    // Verify we got audio data
+    const channelData = renderedBuffer.getChannelData(0);
+    const hasAudio = channelData.some(sample => Math.abs(sample) > 0.001);
+
+    if (!hasAudio) {
+      console.warn('Rendered buffer is silent, using fallback');
+      return createFallbackAudioBuffer(audioContext, duration);
+    }
 
     return renderedBuffer;
   } catch (error) {
