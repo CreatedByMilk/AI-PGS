@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Slider from '../ui/Slider';
 import { generateVoice } from '../../services/geminiService';
 import { GoogleGenAI } from '@google/genai';
+import { getAudioContext } from '../../utils/audioContext';
 
 interface GenerateMusicModalProps {
   onClose: () => void;
@@ -20,19 +21,38 @@ const musicStyles = [
   "Funky Bassline"
 ];
 
+// Audio synthesis parameters for each style
+const styleParams = [
+  { freq: 220, type: 'sine' as OscillatorType, detune: 0, filterFreq: 800 },     // Lush Strings
+  { freq: 55, type: 'sine' as OscillatorType, detune: 0, filterFreq: 150 },      // Punchy Kick (low)
+  { freq: 130.81, type: 'square' as OscillatorType, detune: 0, filterFreq: 1200 }, // Minimal Techno
+  { freq: 110, type: 'sine' as OscillatorType, detune: 5, filterFreq: 600 },     // Ambient Pads
+  { freq: 523.25, type: 'square' as OscillatorType, detune: 0, filterFreq: 2000 }, // 8-bit Lead
+  { freq: 261.63, type: 'triangle' as OscillatorType, detune: 0, filterFreq: 1500 }, // Jazzy Piano
+  { freq: 82.41, type: 'sawtooth' as OscillatorType, detune: -10, filterFreq: 1800 }, // Distorted Guitar
+  { freq: 65.41, type: 'sawtooth' as OscillatorType, detune: 0, filterFreq: 400 }  // Funky Bassline
+];
+
 const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddClip, ai }) => {
   const [sliderValues, setSliderValues] = useState<number[]>(() => musicStyles.map(() => 0.5));
   const [isMixing, setIsMixing] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const oscillatorsRef = useRef<Array<{
+    osc: OscillatorNode;
+    gain: GainNode;
+    filter: BiquadFilterNode;
+  }>>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    // A simple placeholder beat loop
-    audioRef.current = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=");
-    audioRef.current.loop = true;
     return () => {
-        audioRef.current?.pause();
-    }
+      // Cleanup on unmount
+      oscillatorsRef.current.forEach(({ osc }) => {
+        try { osc.stop(); } catch (e) {}
+      });
+      oscillatorsRef.current = [];
+    };
   }, []);
 
   const handleSliderChange = (index: number, value: number) => {
@@ -41,28 +61,70 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
       newValues[index] = value;
       return newValues;
     });
+
+    // Update gain in real-time if mixing
+    if (isMixing && oscillatorsRef.current[index]) {
+      oscillatorsRef.current[index].gain.gain.setTargetAtTime(
+        value * 0.15, // Scale down for pleasant mixing
+        audioContextRef.current!.currentTime,
+        0.05
+      );
+    }
   };
 
   const handleStartMixing = () => {
     setIsMixing(true);
-    audioRef.current?.play();
+
+    const audioContext = getAudioContext();
+    audioContextRef.current = audioContext;
+
+    // Create oscillators for each style
+    styleParams.forEach((params, index) => {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const filter = audioContext.createBiquadFilter();
+
+      osc.type = params.type;
+      osc.frequency.value = params.freq;
+      osc.detune.value = params.detune;
+
+      filter.type = 'lowpass';
+      filter.frequency.value = params.filterFreq;
+      filter.Q.value = 1;
+
+      gain.gain.value = sliderValues[index] * 0.15;
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioContext.destination);
+
+      osc.start();
+
+      oscillatorsRef.current.push({ osc, gain, filter });
+    });
   };
   
   const handleCapture = async () => {
     if (isCapturing) return;
     setIsCapturing(true);
-    audioRef.current?.pause();
+
+    // Stop all oscillators
+    oscillatorsRef.current.forEach(({ osc }) => {
+      try { osc.stop(); } catch (e) {}
+    });
+    oscillatorsRef.current = [];
+    setIsMixing(false);
 
     try {
         const activeStyles = musicStyles
             .map((style, index) => ({ style, value: sliderValues[index] }))
             .filter(item => item.value > 0.1)
             .sort((a,b) => b.value - a.value);
-        
+
         const prompt = `Describe a 15-second piece of music featuring these elements with their respective intensity: ${activeStyles.map(s => `${s.style} at ${Math.round(s.value * 100)}%`).join(', ')}. The style should be electronic and atmospheric.`;
         const clipName = activeStyles.map(s => s.style).slice(0, 2).join(' & ') || "Generated Music";
 
-        // We use the TTS model to simulate a music generation API
+        // We use the TTS model to simulate a music generation API (temporary until real music API)
         const { audioB64, mimeType } = await generateVoice(ai, prompt, 'Zephyr');
         await onAddClip(2, clipName, audioB64, mimeType);
         onClose();
