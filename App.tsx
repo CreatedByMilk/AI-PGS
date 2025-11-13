@@ -5,6 +5,7 @@ import MixerPanel from './components/MixerPanel';
 import { Track, Clip, MixerSettings } from './types';
 import { INITIAL_TRACKS, DEFAULT_MIXER_SETTINGS } from './constants';
 import { generateNewClip } from './utils/audioUtils';
+import { exportProjectToWav } from './utils/exportUtils';
 import { GoogleGenAI } from '@google/genai';
 
 const App: React.FC = () => {
@@ -178,9 +179,85 @@ const App: React.FC = () => {
     }
   };
 
-  const saveProject = () => alert("Save Project: This feature is in development.");
-  const loadProject = () => alert("Load Project: This feature is in development.");
-  const exportProject = () => alert("Export Project: This feature is in development.");
+  const saveProject = () => {
+    try {
+      const projectData = {
+        projectName,
+        tracks: tracks.map(track => ({
+          ...track,
+          clips: track.clips.map(clip => ({
+            ...clip,
+            audioBuffer: undefined, // Can't serialize AudioBuffer
+          })),
+        })),
+      };
+      const dataStr = JSON.stringify(projectData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${projectName}.aipgs`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      alert('Project saved successfully!');
+    } catch (error) {
+      console.error('Error saving project:', error);
+      alert('Failed to save project.');
+    }
+  };
+
+  const loadProject = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.aipgs';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const projectData = JSON.parse(text);
+
+        // Reload audio buffers
+        const loadedTracks = await Promise.all(
+          projectData.tracks.map(async (track: Track) => ({
+            ...track,
+            clips: await Promise.all(
+              track.clips.map(async (clip: Clip) => {
+                const newClipData = await generateNewClip(
+                  track.id,
+                  clip.name,
+                  clip.audioB64,
+                  clip.mimeType
+                );
+                return {
+                  ...clip,
+                  audioBuffer: newClipData.audioBuffer,
+                  waveform: newClipData.waveform,
+                };
+              })
+            ),
+          }))
+        );
+
+        setProjectName(projectData.projectName);
+        setTracks(loadedTracks);
+        setPlayheadPosition(0);
+        setIsPlaying(false);
+        alert('Project loaded successfully!');
+      } catch (error) {
+        console.error('Error loading project:', error);
+        alert('Failed to load project. Please ensure the file is a valid AI-PGS project.');
+      }
+    };
+    input.click();
+  };
+
+  const exportProject = () => {
+    exportProjectToWav(tracks, projectName);
+  };
 
   return (
     <div className="min-h-screen bg-[#1A1A1A] flex flex-col">
