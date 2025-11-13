@@ -19,6 +19,8 @@ export default defineConfig(({ mode }) => {
             global: true,
             process: true,
           },
+          // Exclude modules that should be externalized or mocked
+          exclude: ['fs', 'net'],
         }),
       ],
       define: {
@@ -30,6 +32,8 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
           buffer: 'buffer',
+          stream: 'stream-browserify',
+          'node:stream/web': 'stream-browserify',
         }
       },
       optimizeDeps: {
@@ -37,6 +41,12 @@ export default defineConfig(({ mode }) => {
           define: {
             global: 'globalThis',
           },
+        },
+        exclude: ['@google/genai'],
+      },
+      build: {
+        commonjsOptions: {
+          transformMixedEsModules: true,
         },
       },
     };
