@@ -285,16 +285,30 @@ const TimelinePanel: React.FC<TimelinePanelProps> = (props) => {
 
   const handlePlayheadMouseUp = useCallback(() => {
     setIsDraggingPlayhead(false);
-    window.removeEventListener('mousemove', handlePlayheadDrag);
-    window.removeEventListener('mouseup', handlePlayheadMouseUp);
-  }, [handlePlayheadDrag]);
-  
+  }, []);
+
   const handlePlayheadMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsDraggingPlayhead(true);
-    window.addEventListener('mousemove', handlePlayheadDrag);
-    window.addEventListener('mouseup', handlePlayheadMouseUp);
-  }, [handlePlayheadDrag, handlePlayheadMouseUp]);
+  }, []);
+
+  // Handle drag state changes
+  useEffect(() => {
+    if (isDraggingPlayhead) {
+      const onMove = (e: MouseEvent) => handlePlayheadDrag(e);
+      const onUp = () => {
+        setIsDraggingPlayhead(false);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+    }
+  }, [isDraggingPlayhead, handlePlayheadDrag]);
 
   return (
     <>
@@ -374,7 +388,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = (props) => {
               ))}
             </div>
             <div className="absolute top-0 w-0.5 bg-[#FF4F00] z-30 pointer-events-none" style={{ left: `${playheadPosition * PIXELS_PER_SECOND}px`, height: '100%' }}>
-               <div onMouseDown={handlePlayheadMouseDown} className="absolute top-0 -left-1 w-3 h-3 bg-[#FF4F00] border border-white rounded-full cursor-grab active:cursor-grabbing pointer-events-auto" />
+               <div
+                 onMouseDown={handlePlayheadMouseDown}
+                 className={`absolute top-0 -left-1 w-3 h-3 bg-[#FF4F00] border border-white rounded-full pointer-events-auto ${isDraggingPlayhead ? 'cursor-grabbing scale-110' : 'cursor-grab hover:scale-110'} transition-transform`}
+               />
             </div>
           </div>
         </div>

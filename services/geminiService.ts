@@ -1,16 +1,43 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 
+interface VoiceGenerationOptions {
+  chunkIndex?: number;
+  totalChunks?: number;
+  isFirstChunk?: boolean;
+  isLastChunk?: boolean;
+}
+
 export const generateVoice = async (
   ai: GoogleGenAI,
   text: string,
-  voiceName: 'Charon' | 'Zephyr' = 'Charon'
+  voiceName: 'Charon' | 'Zephyr' = 'Charon',
+  options: VoiceGenerationOptions = {}
 ): Promise<{ audioB64: string; mimeType: string }> => {
-  
-  // A more direct prompt to guide the model, which can help reduce audio artifacts.
-  const mleInstruction = `Narrate the following in an authentic Multicultural London English (MLE) accent, spoken by a middle-aged Black British man from London. The tone should be measured, wise, and compelling for a serious story. Voice the text naturally, not aggressively.`;
+
+  const { chunkIndex = 0, totalChunks = 1, isFirstChunk = true, isLastChunk = true } = options;
+
+  // Enhanced MLE instruction with prosody and consistency guidance
+  const mleInstruction = `You are a consistent voice actor performing as a middle-aged Black British man from London with an authentic Multicultural London English (MLE) accent.
+
+CRITICAL VOICE CONSISTENCY RULES:
+- Maintain EXACTLY the same vocal characteristics throughout
+- Use a measured, wise, and compelling tone suitable for serious storytelling
+- Speak naturally with moderate pacing (not rushed, not slow)
+- Keep pitch consistent in the lower-mid range
+- Maintain steady rhythm and flow
+- Avoid aggressive or harsh tones
+- Use natural conversational cadence with slight melodic variation typical of MLE
+
+${totalChunks > 1 ? `CONTEXT: This is part ${chunkIndex + 1} of ${totalChunks} in a continuous narration. Maintain EXACT voice consistency with ${isFirstChunk ? 'the beginning' : 'previous parts'}. ${isLastChunk ? 'This is the final part.' : 'More parts will follow, so keep energy consistent.'}` : ''}
+
+PERFORMANCE DIRECTION:
+- Speak as if telling an important story to a close friend
+- Let sentences breathe naturally with appropriate pauses
+- Emphasize key words subtly without overdoing it
+- Maintain the same vocal energy from start to finish`;
 
   // Only apply the detailed instruction to the main 'Charon' voice.
-  const promptText = voiceName === 'Charon' ? `${mleInstruction}\n\nTEXT: "${text}"` : text;
+  const promptText = voiceName === 'Charon' ? `${mleInstruction}\n\nNARRATE: "${text}"` : text;
 
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-preview-tts',
@@ -21,6 +48,11 @@ export const generateVoice = async (
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: voiceName },
         },
+      },
+      // Add generation config for consistency
+      generationConfig: {
+        temperature: 0.3, // Lower temperature for more consistent output
+        candidateCount: 1,
       },
     },
   });

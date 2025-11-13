@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SfxAsset } from '../../types';
-import { generateVoice, combineSfxPrompts } from '../../services/geminiService';
+import { combineSfxPrompts } from '../../services/geminiService';
+import { generateSfxFromText } from '../../services/sfxrService';
 import { GoogleGenAI } from '@google/genai';
 
 interface GenerateSfxModalProps {
@@ -19,7 +20,8 @@ const GenerateSfxModal: React.FC<GenerateSfxModalProps> = ({ onClose, onAddClip,
     if (!prompt.trim() || isLoading) return;
     setIsLoading(true);
     try {
-      const { audioB64, mimeType } = await generateVoice(ai, prompt, "Zephyr"); // Use a different voice for SFX
+      // Use jsfxr with AI-generated parameters
+      const { audioB64, mimeType } = await generateSfxFromText(ai, prompt);
       const newAsset: SfxAsset = {
         id: `sfx-${Date.now()}`,
         name: prompt,
@@ -30,19 +32,21 @@ const GenerateSfxModal: React.FC<GenerateSfxModalProps> = ({ onClose, onAddClip,
       setPrompt('');
     } catch (error) {
       console.error("Error generating SFX:", error);
-      alert("Failed to generate SFX.");
+      alert("Failed to generate SFX. Try a simpler description.");
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const handleCombine = async () => {
     if (selectedAssets.size < 2 || isLoading) return;
     setIsLoading(true);
     try {
         const promptsToCombine = assets.filter(a => selectedAssets.has(a.id)).map(a => a.name);
         const combinedPrompt = await combineSfxPrompts(ai, promptsToCombine);
-        const { audioB64, mimeType } = await generateVoice(ai, combinedPrompt, "Zephyr");
+
+        // Generate new SFX from combined description
+        const { audioB64, mimeType } = await generateSfxFromText(ai, combinedPrompt);
         const newAsset: SfxAsset = {
             id: `sfx-combined-${Date.now()}`,
             name: combinedPrompt.substring(0, 50),

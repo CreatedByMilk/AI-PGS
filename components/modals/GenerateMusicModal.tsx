@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Slider from '../ui/Slider';
-import { generateVoice } from '../../services/geminiService';
+import { getAudioContext } from '../../utils/audioContext';
+import { generateMusicFromSliders, initMagentaModel } from '../../services/magentaService';
 import { GoogleGenAI } from '@google/genai';
 
 interface GenerateMusicModalProps {
@@ -20,19 +21,55 @@ const musicStyles = [
   "Funky Bassline"
 ];
 
+// Audio synthesis parameters for each style
+const styleParams = [
+  { freq: 220, type: 'sine' as OscillatorType, detune: 0, filterFreq: 800 },     // Lush Strings
+  { freq: 55, type: 'sine' as OscillatorType, detune: 0, filterFreq: 150 },      // Punchy Kick (low)
+  { freq: 130.81, type: 'square' as OscillatorType, detune: 0, filterFreq: 1200 }, // Minimal Techno
+  { freq: 110, type: 'sine' as OscillatorType, detune: 5, filterFreq: 600 },     // Ambient Pads
+  { freq: 523.25, type: 'square' as OscillatorType, detune: 0, filterFreq: 2000 }, // 8-bit Lead
+  { freq: 261.63, type: 'triangle' as OscillatorType, detune: 0, filterFreq: 1500 }, // Jazzy Piano
+  { freq: 82.41, type: 'sawtooth' as OscillatorType, detune: -10, filterFreq: 1800 }, // Distorted Guitar
+  { freq: 65.41, type: 'sawtooth' as OscillatorType, detune: 0, filterFreq: 400 }  // Funky Bassline
+];
+
 const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddClip, ai }) => {
   const [sliderValues, setSliderValues] = useState<number[]>(() => musicStyles.map(() => 0.5));
   const [isMixing, setIsMixing] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading AI model...');
+
+  const oscillatorsRef = useRef<Array<{
+    osc: OscillatorNode;
+    gain: GainNode;
+    filter: BiquadFilterNode;
+  }>>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    // A simple placeholder beat loop
-    audioRef.current = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=");
-    audioRef.current.loop = true;
+    // Initialize Magenta model on mount
+    const loadModel = async () => {
+      try {
+        setLoadingText('Loading AI music model...');
+        await initMagentaModel();
+        setIsModelLoaded(true);
+        setLoadingText('');
+      } catch (error) {
+        console.error('Failed to load music model:', error);
+        setLoadingText('Model load failed - using fallback');
+        setIsModelLoaded(true); // Allow fallback generation
+      }
+    };
+    loadModel();
+
     return () => {
-        audioRef.current?.pause();
-    }
+      // Cleanup on unmount
+      oscillatorsRef.current.forEach(({ osc }) => {
+        try { osc.stop(); } catch (e) {}
+      });
+      oscillatorsRef.current = [];
+    };
   }, []);
 
   const handleSliderChange = (index: number, value: number) => {
@@ -41,34 +78,75 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
       newValues[index] = value;
       return newValues;
     });
+
+    // Update gain in real-time if mixing
+    if (isMixing && oscillatorsRef.current[index]) {
+      oscillatorsRef.current[index].gain.gain.setTargetAtTime(
+        value * 0.15, // Scale down for pleasant mixing
+        audioContextRef.current!.currentTime,
+        0.05
+      );
+    }
   };
 
   const handleStartMixing = () => {
     setIsMixing(true);
-    audioRef.current?.play();
+
+    const audioContext = getAudioContext();
+    audioContextRef.current = audioContext;
+
+    // Create oscillators for each style
+    styleParams.forEach((params, index) => {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const filter = audioContext.createBiquadFilter();
+
+      osc.type = params.type;
+      osc.frequency.value = params.freq;
+      osc.detune.value = params.detune;
+
+      filter.type = 'lowpass';
+      filter.frequency.value = params.filterFreq;
+      filter.Q.value = 1;
+
+      gain.gain.value = sliderValues[index] * 0.15;
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioContext.destination);
+
+      osc.start();
+
+      oscillatorsRef.current.push({ osc, gain, filter });
+    });
   };
   
   const handleCapture = async () => {
-    if (isCapturing) return;
+    if (isCapturing || !isModelLoaded) return;
     setIsCapturing(true);
-    audioRef.current?.pause();
+
+    // Stop all oscillators
+    oscillatorsRef.current.forEach(({ osc }) => {
+      try { osc.stop(); } catch (e) {}
+    });
+    oscillatorsRef.current = [];
+    setIsMixing(false);
 
     try {
         const activeStyles = musicStyles
             .map((style, index) => ({ style, value: sliderValues[index] }))
             .filter(item => item.value > 0.1)
             .sort((a,b) => b.value - a.value);
-        
-        const prompt = `Describe a 15-second piece of music featuring these elements with their respective intensity: ${activeStyles.map(s => `${s.style} at ${Math.round(s.value * 100)}%`).join(', ')}. The style should be electronic and atmospheric.`;
+
         const clipName = activeStyles.map(s => s.style).slice(0, 2).join(' & ') || "Generated Music";
 
-        // We use the TTS model to simulate a music generation API
-        const { audioB64, mimeType } = await generateVoice(ai, prompt);
+        // Generate music using Magenta.js AI model
+        const { audioB64, mimeType } = await generateMusicFromSliders(sliderValues, 15);
         await onAddClip(2, clipName, audioB64, mimeType);
         onClose();
     } catch (error) {
         console.error("Error generating music:", error);
-        alert("Failed to generate music. Please check your API key and try again.");
+        alert("Failed to generate music. The AI model may still be loading.");
     } finally {
         setIsCapturing(false);
     }
@@ -77,7 +155,17 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-[#F5F5F5] border border-black w-full max-w-4xl p-4">
-        <h2 className="font-mono text-black">GENERATE MUSIC (REAL-TIME MIXER)</h2>
+        <h2 className="font-mono text-black">GENERATE MUSIC (AI-POWERED MIXER)</h2>
+        {loadingText && (
+          <div className="font-mono text-xs text-[#FF4F00] my-2">
+            {loadingText}
+          </div>
+        )}
+        {!loadingText && (
+          <div className="font-mono text-xs text-gray-600 my-2">
+            MODEL: MAGENTA_MUSIC_VAE | MODE: REAL-TIME_SYNTHESIS + AI_GENERATION
+          </div>
+        )}
         <div className="grid grid-cols-4 md:grid-cols-8 gap-4 my-4">
           {musicStyles.map((style, index) => (
             <div key={style} className="text-center">
@@ -94,11 +182,11 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
         <div className="flex justify-between items-center mt-4">
           <div>
             {!isMixing && (
-              <button onClick={handleStartMixing} className="font-mono text-sm text-white bg-black px-3 py-1.5">[ START MIX ]</button>
+              <button onClick={handleStartMixing} className="font-mono text-sm text-white bg-black px-3 py-1.5" disabled={!isModelLoaded}>[ START MIX ]</button>
             )}
             {isMixing && (
-              <button onClick={handleCapture} className="font-mono text-sm text-white bg-[#FF4F00] px-3 py-1.5" disabled={isCapturing}>
-                {isCapturing ? '[ CAPTURING... ]' : '[ CAPTURE_15S ]'}
+              <button onClick={handleCapture} className="font-mono text-sm text-white bg-[#FF4F00] px-3 py-1.5" disabled={isCapturing || !isModelLoaded}>
+                {isCapturing ? '[ GENERATING AI MUSIC... ]' : '[ CAPTURE_15S (AI) ]'}
               </button>
             )}
           </div>

@@ -1,0 +1,59 @@
+/* AI-PGS Global Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border: 1px solid #000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #FF4F00;
+}
+
+/* Prevent text selection during dragging */
+.dragging {
+  user-select: none;
+}
+
+/* Smooth transitions for interactive elements */
+button {
+  transition: all 0.15s ease-in-out;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Audio clip animations */
+.audio-clip {
+  transition: box-shadow 0.15s ease-in-out;
+}
+
+.audio-clip:hover {
+  box-shadow: 0 0 10px rgba(255, 79, 0, 0.5);
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  backdrop-filter: blur(2px);
+}
