@@ -250,14 +250,13 @@ const arrayBufferToDataUrl = (buffer: ArrayBuffer): string => {
  * Generates SFX using jsfxr parameters (with fallback)
  */
 export const generateSfxFromParams = (params: SfxrParams): string => {
-  // Try jsfxr first
-  if (jsfxr && typeof jsfxr === 'function') {
+  if (typeof sfxr === 'function') {
     try {
-      const paramsArray = jsfxr.toArray ? jsfxr.toArray(params) : params;
-      const sound = jsfxr(paramsArray);
+      const paramsArray = sfxr.toArray ? sfxr.toArray(params) : params;
+      const sound = sfxr(paramsArray);
       return sound;
     } catch (e) {
-      console.warn('jsfxr failed, using fallback:', e);
+      console.warn('sfxr failed, using fallback:', e);
     }
   }
 

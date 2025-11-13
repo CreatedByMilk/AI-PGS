@@ -35,6 +35,9 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
           buffer: 'buffer',
+          'whatwg-url/lib/public-api.js': path.resolve(__dirname, 'src/shims/whatwg-url.js'),
+          'whatwg-url': path.resolve(__dirname, 'src/shims/whatwg-url.js'),
+          jsfxr: path.resolve(__dirname, 'src/shims/jsfxr.js'),
         }
       },
       optimizeDeps: {
@@ -43,7 +46,7 @@ export default defineConfig(({ mode }) => {
             global: 'globalThis',
           },
         },
-        exclude: ['@google/genai', 'node-fetch', 'fetch-blob', 'formdata-polyfill', 'node-domexception'],
+        exclude: ['@google/genai', 'node-fetch', 'fetch-blob', 'formdata-polyfill', 'node-domexception', 'jsfxr'],
       },
     };
 });

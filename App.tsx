@@ -16,7 +16,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState('Untitled_Project');
   const [copiedClip, setCopiedClip] = useState<Omit<Clip, 'id' | 'start' | 'trackId'> | null>(null);
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai: any = process.env.API_KEY ? new GoogleGenAI({ apiKey: process.env.API_KEY as string }) : null;
 
   const updateClipPosition = useCallback((clipId: string, newStart: number) => {
     setTracks(prevTracks =>
