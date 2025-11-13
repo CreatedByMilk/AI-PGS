@@ -35,8 +35,6 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
           buffer: 'buffer',
-          stream: 'stream-browserify',
-          'node:stream/web': 'stream-browserify',
         }
       },
       optimizeDeps: {
@@ -45,7 +43,7 @@ export default defineConfig(({ mode }) => {
             global: 'globalThis',
           },
         },
-        exclude: ['fetch-blob', 'node-fetch', '@google/genai'],
+        exclude: ['@google/genai', 'node-fetch', 'fetch-blob', 'formdata-polyfill', 'node-domexception'],
       },
     };
 });
