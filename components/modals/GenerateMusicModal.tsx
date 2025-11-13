@@ -63,7 +63,7 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
         const clipName = activeStyles.map(s => s.style).slice(0, 2).join(' & ') || "Generated Music";
 
         // We use the TTS model to simulate a music generation API
-        const { audioB64, mimeType } = await generateVoice(ai, prompt);
+        const { audioB64, mimeType } = await generateVoice(ai, prompt, 'Zephyr');
         await onAddClip(2, clipName, audioB64, mimeType);
         onClose();
     } catch (error) {

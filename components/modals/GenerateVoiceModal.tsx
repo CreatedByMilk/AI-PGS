@@ -49,8 +49,20 @@ const GenerateVoiceModal: React.FC<GenerateVoiceModalProps> = ({ onClose, onAddM
         chunks.push(words.slice(i, i + WORD_LIMIT_VOICE).join(' '));
       }
 
-      const generationPromises = chunks.map(chunk => generateVoice(ai, chunk));
-      const generatedAudios = await Promise.all(generationPromises);
+      // Generate chunks sequentially with context for better voice consistency
+      const generatedAudios = [];
+      const totalChunks = chunks.length;
+
+      for (let i = 0; i < chunks.length; i++) {
+        setLoadingText(`[ GENERATING PART ${i + 1}/${totalChunks}... ]`);
+        const audio = await generateVoice(ai, chunks[i], 'Charon', {
+          chunkIndex: i,
+          totalChunks: totalChunks,
+          isFirstChunk: i === 0,
+          isLastChunk: i === totalChunks - 1,
+        });
+        generatedAudios.push(audio);
+      }
 
       const clipsData = generatedAudios.map((audio, i) => ({
           name: chunks.length > 1 ? `Narration Pt. ${i + 1}` : "Narration",
