@@ -1,4 +1,6 @@
-import jsfxr from 'jsfxr';
+// @ts-ignore
+import * as jsfxrPkg from 'jsfxr';
+const jsfxr = (jsfxrPkg as any).default || jsfxrPkg;
 
 /**
  * jsfxr parameter presets for different sound effect types
