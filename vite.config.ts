@@ -19,8 +19,6 @@ export default defineConfig(({ mode }) => {
             global: true,
             process: true,
           },
-          // Exclude modules that should be externalized or mocked
-          exclude: ['fs', 'net'],
         }),
       ],
       define: {
@@ -42,12 +40,7 @@ export default defineConfig(({ mode }) => {
             global: 'globalThis',
           },
         },
-        exclude: ['@google/genai'],
-      },
-      build: {
-        commonjsOptions: {
-          transformMixedEsModules: true,
-        },
+        exclude: ['fetch-blob', 'node-fetch', '@google/genai'],
       },
     };
 });
