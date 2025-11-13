@@ -17,14 +17,38 @@ function decode(base64: string): Uint8Array {
 }
 
 /**
- * Manually creates an AudioBuffer from raw 16-bit PCM audio data.
- * This is the crucial step to correctly handle the API's raw audio output.
+ * Check if data is WAV format
+ */
+function isWavFormat(data: Uint8Array): boolean {
+  // Check for RIFF header
+  return data.length > 12 &&
+    data[0] === 0x52 && // 'R'
+    data[1] === 0x49 && // 'I'
+    data[2] === 0x46 && // 'F'
+    data[3] === 0x46;   // 'F'
+}
+
+/**
+ * Decodes audio data - handles both WAV and raw PCM formats
  * @param data The raw audio data as a Uint8Array.
+ * @param mimeType The MIME type hint
  * @returns A promise that resolves with the playable AudioBuffer.
  */
-async function decodeAudioData(data: Uint8Array): Promise<AudioBuffer> {
+async function decodeAudioData(data: Uint8Array, mimeType: string = 'audio/pcm'): Promise<AudioBuffer> {
   const ctx = getAudioContext();
-  const sampleRate = 24000; // This must match the TTS model's output sample rate.
+
+  // Try browser's native decoder first for WAV files
+  if (isWavFormat(data) || mimeType.includes('wav')) {
+    try {
+      const audioBuffer = await ctx.decodeAudioData(data.buffer.slice(0));
+      return audioBuffer;
+    } catch (e) {
+      console.warn('Native WAV decode failed, trying manual PCM decode:', e);
+    }
+  }
+
+  // Manual PCM decoding for raw audio
+  const sampleRate = 24000; // Gemini TTS output sample rate
   const numChannels = 1;
 
   // The raw data is 16-bit signed integers (PCM).
@@ -68,7 +92,7 @@ const generateWaveformData = (audioBuffer: AudioBuffer, points: number = 100): n
 
 export const generateNewClip = async (trackId: number, name: string, audioB64: string, mimeType: string): Promise<Omit<Clip, 'start'>> => {
     const rawBytes = decode(audioB64);
-    const audioBuffer = await decodeAudioData(rawBytes);
+    const audioBuffer = await decodeAudioData(rawBytes, mimeType);
     const waveform = generateWaveformData(audioBuffer);
     return {
         id: `clip-${Date.now()}-${Math.random()}`,
