@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        strictPort: true,
       },
       plugins: [
         react(),
@@ -24,7 +25,11 @@ export default defineConfig(({ mode }) => {
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // Magenta.js needs these globals
         global: 'globalThis',
+        'process.env': {},
+        'process.hrtime': '(() => { const start = performance.now(); return () => [0, Math.floor((performance.now() - start) * 1e6)]; })()',
+        Buffer: '(function(){ const w=typeof window!=="undefined"?window:{}; return w.Buffer||{isBuffer:function(){return false}}; })()'
       },
       resolve: {
         alias: {

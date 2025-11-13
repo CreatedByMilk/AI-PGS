@@ -1,13 +1,6 @@
-// Use dynamic import to handle jsfxr loading issues
-let jsfxr: any = null;
-
-// Try to load jsfxr, but provide fallback if it fails
-try {
-  // @ts-ignore
-  jsfxr = require('jsfxr');
-} catch (e) {
-  console.warn('jsfxr failed to load, using Web Audio API fallback');
-}
+// @ts-ignore
+import * as jsfxrPkg from 'jsfxr';
+const jsfxr = (jsfxrPkg as any).default || jsfxrPkg;
 
 /**
  * jsfxr parameter presets for different sound effect types
