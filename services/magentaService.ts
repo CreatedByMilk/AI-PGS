@@ -130,7 +130,8 @@ export const noteSequenceToAudioBuffer = async (
 };
 
 /**
- * Creates a simple synthesized audio buffer as fallback
+ * Creates a musical audio buffer as fallback
+ * Generates an actual melody with rhythm and harmony
  */
 const createFallbackAudioBuffer = (
   audioContext: AudioContext,
@@ -139,26 +140,78 @@ const createFallbackAudioBuffer = (
   const sampleRate = audioContext.sampleRate;
   const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
 
+  // Musical notes (C major scale + some variations)
+  const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]; // C4 to C5
+  const chordNotes = [
+    [261.63, 329.63, 392.00], // C major
+    [293.66, 349.23, 440.00], // D minor
+    [329.63, 392.00, 493.88], // E minor
+    [349.23, 440.00, 523.25], // F major
+  ];
+
   for (let channel = 0; channel < 2; channel++) {
     const channelData = buffer.getChannelData(channel);
 
-    // Create a simple melody with multiple sine waves
     for (let i = 0; i < channelData.length; i++) {
       const t = i / sampleRate;
 
-      // Simple chord progression
-      const freq1 = 440 * Math.pow(2, Math.floor(t * 2) % 4 / 12); // Changes every 0.5s
-      const freq2 = freq1 * 1.25; // Perfect fourth
-      const freq3 = freq1 * 1.5;  // Perfect fifth
+      // Rhythm: 4 beats per second (120 BPM)
+      const beatTime = 0.25; // 250ms per beat
+      const currentBeat = Math.floor(t / beatTime);
+      const beatProgress = (t % beatTime) / beatTime;
 
-      // Envelope
-      const envelope = Math.exp(-t * 0.5) * Math.sin(t * 8 * Math.PI); // Decay with vibrato
+      // Melody note (changes every beat)
+      const melodyNote = notes[currentBeat % 8];
 
-      channelData[i] = (
-        Math.sin(2 * Math.PI * freq1 * t) * 0.3 +
-        Math.sin(2 * Math.PI * freq2 * t) * 0.2 +
-        Math.sin(2 * Math.PI * freq3 * t) * 0.1
-      ) * envelope * 0.3;
+      // Chord (changes every 4 beats)
+      const chordIndex = Math.floor(currentBeat / 4) % 4;
+      const chord = chordNotes[chordIndex];
+
+      // Envelope: attack, decay, sustain for each beat
+      let envelope = 0;
+      if (beatProgress < 0.05) {
+        // Quick attack
+        envelope = beatProgress / 0.05;
+      } else if (beatProgress < 0.7) {
+        // Sustain
+        envelope = 1.0 - (beatProgress - 0.05) * 0.3;
+      } else {
+        // Decay
+        envelope = 0.7 - ((beatProgress - 0.7) / 0.3) * 0.7;
+      }
+
+      // Melody (lead)
+      const melody = Math.sin(2 * Math.PI * melodyNote * t) * envelope * 0.25;
+
+      // Chords (background)
+      const harmonyEnvelope = 0.7; // Sustained background
+      const harmony = (
+        Math.sin(2 * Math.PI * chord[0] * t) * 0.15 +
+        Math.sin(2 * Math.PI * chord[1] * t) * 0.12 +
+        Math.sin(2 * Math.PI * chord[2] * t) * 0.10
+      ) * harmonyEnvelope;
+
+      // Bass (octave below root)
+      const bass = Math.sin(2 * Math.PI * (chord[0] / 2) * t) * 0.2 * harmonyEnvelope;
+
+      // Light arpeggio effect
+      const arpTime = (t * 8) % 1;
+      const arpNote = chord[Math.floor(arpTime * 3)];
+      const arpEnvelope = Math.exp(-arpTime * 5);
+      const arp = Math.sin(2 * Math.PI * arpNote * t) * arpEnvelope * 0.08;
+
+      // Mix all elements
+      channelData[i] = melody + harmony + bass + arp;
+
+      // Pan slightly (channel 0 left, channel 1 right)
+      if (channel === 0) {
+        channelData[i] *= 0.9; // Melody slightly left
+      } else {
+        channelData[i] *= 1.0; // Harmony slightly right
+      }
+
+      // Master volume
+      channelData[i] *= 0.4;
     }
   }
 

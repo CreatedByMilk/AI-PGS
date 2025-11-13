@@ -130,23 +130,29 @@ const generateSfxFallback = (params: SfxrParams): string => {
   const baseFreq = 440 * Math.pow(2, ((params.p_base_freq || 0.5) - 0.5) * 4);
   const freqRamp = params.p_freq_ramp || 0;
 
+  // Accumulate phase for smooth frequency transitions
+  let phase = 0;
+  let prevFreq = baseFreq;
+
   for (let i = 0; i < bufferSize; i++) {
     const t = i / sampleRate;
     const progress = i / bufferSize;
 
-    // Frequency with ramp
+    // Frequency with smooth ramp
     const freq = baseFreq * (1 + freqRamp * progress);
+
+    // Update phase (prevents clicking during frequency changes)
+    phase += (2 * Math.PI * freq) / sampleRate;
 
     // Generate waveform based on wave_type
     let sample = 0;
-    const phase = 2 * Math.PI * freq * t;
 
     switch (params.wave_type || 0) {
       case 0: // Square
         sample = Math.sin(phase) > 0 ? 1 : -1;
         break;
       case 1: // Sawtooth
-        sample = 2 * ((freq * t) % 1) - 1;
+        sample = 2 * ((phase / (2 * Math.PI)) % 1) - 1;
         break;
       case 2: // Sine
         sample = Math.sin(phase);
@@ -156,22 +162,37 @@ const generateSfxFallback = (params: SfxrParams): string => {
         break;
     }
 
-    // Apply envelope
-    const attack = params.p_env_attack || 0;
+    // Apply envelope with punch
+    const attack = Math.max(0.001, params.p_env_attack || 0.01);
     const sustain = params.p_env_sustain || 0.1;
-    const decay = params.p_env_decay || 0.2;
+    const decay = Math.max(0.01, params.p_env_decay || 0.2);
+    const punch = params.p_env_punch || 0;
 
-    let envelope = 1;
+    let envelope = 0;
     if (t < attack) {
+      // Attack phase
       envelope = t / attack;
     } else if (t < attack + sustain) {
-      envelope = 1;
+      // Sustain phase with punch
+      const punchValue = punch * (1 - (t - attack) / sustain);
+      envelope = 1 + punchValue;
     } else {
+      // Decay phase
       const decayProgress = (t - attack - sustain) / decay;
       envelope = Math.max(0, 1 - decayProgress);
     }
 
-    data[i] = sample * envelope * 0.3;
+    // Apply vibrato if specified
+    const vibStrength = params.p_vib_strength || 0;
+    const vibSpeed = params.p_vib_speed || 0;
+    if (vibStrength > 0) {
+      const vibrato = Math.sin(2 * Math.PI * vibSpeed * 10 * t) * vibStrength;
+      sample *= 1 + vibrato;
+    }
+
+    data[i] = sample * envelope * 0.5;
+
+    prevFreq = freq;
   }
 
   // Convert buffer to WAV data URL
