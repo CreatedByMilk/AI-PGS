@@ -95,11 +95,18 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
     const audioContext = getAudioContext();
     audioContextRef.current = audioContext;
 
-    // Create oscillators for each style
+    // Create oscillators for each style with LFO for musical variation
     styleParams.forEach((params, index) => {
       const osc = audioContext.createOscillator();
       const gain = audioContext.createGain();
       const filter = audioContext.createBiquadFilter();
+
+      // Add LFO (Low Frequency Oscillator) for pitch variation
+      const lfo = audioContext.createOscillator();
+      const lfoGain = audioContext.createGain();
+
+      lfo.frequency.value = 0.5 + Math.random() * 2; // Random slow modulation
+      lfoGain.gain.value = params.detune + 10; // Slight pitch modulation
 
       osc.type = params.type;
       osc.frequency.value = params.freq;
@@ -109,13 +116,34 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
       filter.frequency.value = params.filterFreq;
       filter.Q.value = 1;
 
-      gain.gain.value = sliderValues[index] * 0.15;
+      // Add tremolo effect for rhythm
+      const tremoloLfo = audioContext.createOscillator();
+      const tremoloGain = audioContext.createGain();
+      tremoloLfo.frequency.value = 4; // 4 Hz tremolo
+      tremoloGain.gain.value = 0.3; // Modulation depth
 
+      const tremoloOffset = audioContext.createGain();
+      tremoloOffset.gain.value = 0.7; // Base level
+
+      // Connect tremolo: LFO -> tremoloGain -> tremoloOffset
+      tremoloLfo.connect(tremoloGain);
+      tremoloGain.connect(tremoloOffset.gain);
+
+      // Connect pitch LFO
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.detune);
+
+      gain.gain.value = sliderValues[index] * 0.12; // Slightly lower volume
+
+      // Audio path: osc -> filter -> tremoloOffset -> gain -> destination
       osc.connect(filter);
-      filter.connect(gain);
+      filter.connect(tremoloOffset);
+      tremoloOffset.connect(gain);
       gain.connect(audioContext.destination);
 
       osc.start();
+      lfo.start();
+      tremoloLfo.start();
 
       oscillatorsRef.current.push({ osc, gain, filter });
     });

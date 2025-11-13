@@ -42,6 +42,9 @@ const GenerateVoiceModal: React.FC<GenerateVoiceModalProps> = ({ onClose, onAddM
     if (!text.trim() || isLoading) return;
     setIsLoading(true);
     setLoadingText('[ GENERATING... ]');
+
+    const startTime = Date.now();
+
     try {
       const words = text.split(/\s+/).filter(Boolean);
       const chunks: string[] = [];
@@ -54,14 +57,22 @@ const GenerateVoiceModal: React.FC<GenerateVoiceModalProps> = ({ onClose, onAddM
       const totalChunks = chunks.length;
 
       for (let i = 0; i < chunks.length; i++) {
-        setLoadingText(`[ GENERATING PART ${i + 1}/${totalChunks}... ]`);
+        const chunkStartTime = Date.now();
+        const progress = Math.round((i / totalChunks) * 100);
+        setLoadingText(`[ ${progress}% - PART ${i + 1}/${totalChunks}... ]`);
+
         const audio = await generateVoice(ai, chunks[i], 'Charon', {
           chunkIndex: i,
           totalChunks: totalChunks,
           isFirstChunk: i === 0,
           isLastChunk: i === totalChunks - 1,
         });
+
         generatedAudios.push(audio);
+
+        // Show timing feedback for user
+        const chunkTime = ((Date.now() - chunkStartTime) / 1000).toFixed(1);
+        console.log(`Chunk ${i + 1}/${totalChunks} generated in ${chunkTime}s`);
       }
 
       const clipsData = generatedAudios.map((audio, i) => ({
@@ -72,7 +83,10 @@ const GenerateVoiceModal: React.FC<GenerateVoiceModalProps> = ({ onClose, onAddM
 
       // The voice track is always trackId 1 in this modal
       await onAddMultipleClips(1, clipsData);
-      
+
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`Total generation time: ${totalTime}s for ${totalChunks} chunks`);
+
       onClose();
     } catch (error) {
       console.error("Error generating voice:", error);
