@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Slider from '../ui/Slider';
-import { generateVoice } from '../../services/geminiService';
-import { GoogleGenAI } from '@google/genai';
 import { getAudioContext } from '../../utils/audioContext';
+import { generateMusicFromSliders, initMagentaModel } from '../../services/magentaService';
+import { GoogleGenAI } from '@google/genai';
 
 interface GenerateMusicModalProps {
   onClose: () => void;
@@ -37,6 +37,8 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
   const [sliderValues, setSliderValues] = useState<number[]>(() => musicStyles.map(() => 0.5));
   const [isMixing, setIsMixing] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading AI model...');
 
   const oscillatorsRef = useRef<Array<{
     osc: OscillatorNode;
@@ -46,6 +48,21 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
   const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
+    // Initialize Magenta model on mount
+    const loadModel = async () => {
+      try {
+        setLoadingText('Loading AI music model...');
+        await initMagentaModel();
+        setIsModelLoaded(true);
+        setLoadingText('');
+      } catch (error) {
+        console.error('Failed to load music model:', error);
+        setLoadingText('Model load failed - using fallback');
+        setIsModelLoaded(true); // Allow fallback generation
+      }
+    };
+    loadModel();
+
     return () => {
       // Cleanup on unmount
       oscillatorsRef.current.forEach(({ osc }) => {
@@ -105,7 +122,7 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
   };
   
   const handleCapture = async () => {
-    if (isCapturing) return;
+    if (isCapturing || !isModelLoaded) return;
     setIsCapturing(true);
 
     // Stop all oscillators
@@ -121,16 +138,15 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
             .filter(item => item.value > 0.1)
             .sort((a,b) => b.value - a.value);
 
-        const prompt = `Describe a 15-second piece of music featuring these elements with their respective intensity: ${activeStyles.map(s => `${s.style} at ${Math.round(s.value * 100)}%`).join(', ')}. The style should be electronic and atmospheric.`;
         const clipName = activeStyles.map(s => s.style).slice(0, 2).join(' & ') || "Generated Music";
 
-        // We use the TTS model to simulate a music generation API (temporary until real music API)
-        const { audioB64, mimeType } = await generateVoice(ai, prompt, 'Zephyr');
+        // Generate music using Magenta.js AI model
+        const { audioB64, mimeType } = await generateMusicFromSliders(sliderValues, 15);
         await onAddClip(2, clipName, audioB64, mimeType);
         onClose();
     } catch (error) {
         console.error("Error generating music:", error);
-        alert("Failed to generate music. Please check your API key and try again.");
+        alert("Failed to generate music. The AI model may still be loading.");
     } finally {
         setIsCapturing(false);
     }
@@ -139,7 +155,17 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-[#F5F5F5] border border-black w-full max-w-4xl p-4">
-        <h2 className="font-mono text-black">GENERATE MUSIC (REAL-TIME MIXER)</h2>
+        <h2 className="font-mono text-black">GENERATE MUSIC (AI-POWERED MIXER)</h2>
+        {loadingText && (
+          <div className="font-mono text-xs text-[#FF4F00] my-2">
+            {loadingText}
+          </div>
+        )}
+        {!loadingText && (
+          <div className="font-mono text-xs text-gray-600 my-2">
+            MODEL: MAGENTA_MUSIC_VAE | MODE: REAL-TIME_SYNTHESIS + AI_GENERATION
+          </div>
+        )}
         <div className="grid grid-cols-4 md:grid-cols-8 gap-4 my-4">
           {musicStyles.map((style, index) => (
             <div key={style} className="text-center">
@@ -156,11 +182,11 @@ const GenerateMusicModal: React.FC<GenerateMusicModalProps> = ({ onClose, onAddC
         <div className="flex justify-between items-center mt-4">
           <div>
             {!isMixing && (
-              <button onClick={handleStartMixing} className="font-mono text-sm text-white bg-black px-3 py-1.5">[ START MIX ]</button>
+              <button onClick={handleStartMixing} className="font-mono text-sm text-white bg-black px-3 py-1.5" disabled={!isModelLoaded}>[ START MIX ]</button>
             )}
             {isMixing && (
-              <button onClick={handleCapture} className="font-mono text-sm text-white bg-[#FF4F00] px-3 py-1.5" disabled={isCapturing}>
-                {isCapturing ? '[ CAPTURING... ]' : '[ CAPTURE_15S ]'}
+              <button onClick={handleCapture} className="font-mono text-sm text-white bg-[#FF4F00] px-3 py-1.5" disabled={isCapturing || !isModelLoaded}>
+                {isCapturing ? '[ GENERATING AI MUSIC... ]' : '[ CAPTURE_15S (AI) ]'}
               </button>
             )}
           </div>
