@@ -1,4 +1,13 @@
-import jsfxr from 'jsfxr';
+// Use dynamic import to handle jsfxr loading issues
+let jsfxr: any = null;
+
+// Try to load jsfxr, but provide fallback if it fails
+try {
+  // @ts-ignore
+  jsfxr = require('jsfxr');
+} catch (e) {
+  console.warn('jsfxr failed to load, using Web Audio API fallback');
+}
 
 /**
  * jsfxr parameter presets for different sound effect types
@@ -107,16 +116,139 @@ export const sfxrPresets: { [key: string]: SfxrParams } = {
 };
 
 /**
- * Generates SFX using jsfxr parameters
+ * Fallback: Generate SFX using Web Audio API when jsfxr fails
+ */
+const generateSfxFallback = (params: SfxrParams): string => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const sampleRate = audioContext.sampleRate;
+  const duration = (params.p_env_attack || 0) + (params.p_env_sustain || 0.1) + (params.p_env_decay || 0.2);
+  const bufferSize = Math.floor(sampleRate * duration);
+
+  const buffer = audioContext.createBuffer(1, bufferSize, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  const baseFreq = 440 * Math.pow(2, ((params.p_base_freq || 0.5) - 0.5) * 4);
+  const freqRamp = params.p_freq_ramp || 0;
+
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / sampleRate;
+    const progress = i / bufferSize;
+
+    // Frequency with ramp
+    const freq = baseFreq * (1 + freqRamp * progress);
+
+    // Generate waveform based on wave_type
+    let sample = 0;
+    const phase = 2 * Math.PI * freq * t;
+
+    switch (params.wave_type || 0) {
+      case 0: // Square
+        sample = Math.sin(phase) > 0 ? 1 : -1;
+        break;
+      case 1: // Sawtooth
+        sample = 2 * ((freq * t) % 1) - 1;
+        break;
+      case 2: // Sine
+        sample = Math.sin(phase);
+        break;
+      case 3: // Noise
+        sample = Math.random() * 2 - 1;
+        break;
+    }
+
+    // Apply envelope
+    const attack = params.p_env_attack || 0;
+    const sustain = params.p_env_sustain || 0.1;
+    const decay = params.p_env_decay || 0.2;
+
+    let envelope = 1;
+    if (t < attack) {
+      envelope = t / attack;
+    } else if (t < attack + sustain) {
+      envelope = 1;
+    } else {
+      const decayProgress = (t - attack - sustain) / decay;
+      envelope = Math.max(0, 1 - decayProgress);
+    }
+
+    data[i] = sample * envelope * 0.3;
+  }
+
+  // Convert buffer to WAV data URL
+  const wav = bufferToWav(buffer);
+  return arrayBufferToDataUrl(wav);
+};
+
+/**
+ * Helper: Convert AudioBuffer to WAV
+ */
+const bufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
+  const length = buffer.length * 2;
+  const arrayBuffer = new ArrayBuffer(44 + length);
+  const view = new DataView(arrayBuffer);
+  const data = buffer.getChannelData(0);
+
+  // WAV header
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + length, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, buffer.sampleRate, true);
+  view.setUint32(28, buffer.sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, length, true);
+
+  // Write audio data
+  let offset = 44;
+  for (let i = 0; i < data.length; i++) {
+    const sample = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    offset += 2;
+  }
+
+  return arrayBuffer;
+};
+
+/**
+ * Helper: Convert ArrayBuffer to Data URL
+ */
+const arrayBufferToDataUrl = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return 'data:audio/wav;base64,' + btoa(binary);
+};
+
+/**
+ * Generates SFX using jsfxr parameters (with fallback)
  */
 export const generateSfxFromParams = (params: SfxrParams): string => {
-  // Convert params to jsfxr array format
-  const paramsArray = jsfxr.toArray(params);
+  // Try jsfxr first
+  if (jsfxr && typeof jsfxr === 'function') {
+    try {
+      const paramsArray = jsfxr.toArray ? jsfxr.toArray(params) : params;
+      const sound = jsfxr(paramsArray);
+      return sound;
+    } catch (e) {
+      console.warn('jsfxr failed, using fallback:', e);
+    }
+  }
 
-  // Generate the sound
-  const sound = jsfxr(paramsArray);
-
-  return sound;
+  // Use Web Audio API fallback
+  return generateSfxFallback(params);
 };
 
 /**
